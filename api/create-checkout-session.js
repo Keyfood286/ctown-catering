@@ -11,10 +11,10 @@
 //    both "Card" and "US bank account" (ACH) are turned on so customers
 //    see both options on Stripe's payment page.
 
-const Stripe = require("stripe");
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+import Stripe from "stripe";
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -54,4 +54,4 @@ module.exports = async function handler(req, res) {
     console.error("Stripe error:", err);
     return res.status(500).json({ error: "Could not create payment" });
   }
-};
+}
