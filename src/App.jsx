@@ -385,7 +385,25 @@ function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack }) {
       const res = await fetch("/api/create-checkout-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: total, orderNo, customerEmail: form.email }),
+        body: JSON.stringify({
+          amount: total,
+          orderNo,
+          customerEmail: form.email,
+          customerName: form.name,
+          customerPhone: form.phone,
+          fulfillment: form.fulfillment,
+          date: form.date,
+          time: form.time,
+          address: form.fulfillment === "delivery" ? form.address : STORE.address,
+          itemsSummary: Object.entries(cart)
+            .filter(([, q]) => q > 0)
+            .map(([key, qty]) => {
+              const v = VARIANTS[key];
+              return v ? `${qty}x ${v.item.en} (${SIZE_INFO[v.sizeKey].label})` : "";
+            })
+            .filter(Boolean)
+            .join("; "),
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.url) throw new Error(data.error || "Could not start payment");
