@@ -37,7 +37,10 @@ function readRawBody(req) {
 }
 
 async function notifyByEmail(order) {
-  if (!process.env.RESEND_API_KEY || !process.env.STORE_NOTIFY_EMAIL) return;
+  if (!process.env.RESEND_API_KEY || !process.env.STORE_NOTIFY_EMAIL) {
+    console.log("Skipping email: RESEND_API_KEY or STORE_NOTIFY_EMAIL not set");
+    return;
+  }
 
   const html = `
     <h2>New catering order #${order.orderNo}</h2>
@@ -50,7 +53,7 @@ async function notifyByEmail(order) {
     <p><b>Total paid: $${order.total}</b></p>
   `;
 
-  await fetch("https://api.resend.com/emails", {
+  const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
@@ -63,14 +66,21 @@ async function notifyByEmail(order) {
       html,
     }),
   });
+
+  const body = await res.text();
+  console.log("Resend response:", res.status, body);
+  if (!res.ok) throw new Error(`Resend failed (${res.status}): ${body}`);
 }
 
 async function logToAirtable(order) {
-  if (!process.env.AIRTABLE_API_KEY || !process.env.AIRTABLE_BASE_ID || !process.env.AIRTABLE_TABLE_NAME) return;
+  if (!process.env.AIRTABLE_API_KEY || !process.env.AIRTABLE_BASE_ID || !process.env.AIRTABLE_TABLE_NAME) {
+    console.log("Skipping Airtable: one or more AIRTABLE_ env vars not set");
+    return;
+  }
 
   const url = `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${encodeURIComponent(process.env.AIRTABLE_TABLE_NAME)}`;
 
-  await fetch(url, {
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
@@ -91,6 +101,10 @@ async function logToAirtable(order) {
       },
     }),
   });
+
+  const body = await res.text();
+  console.log("Airtable response:", res.status, body);
+  if (!res.ok) throw new Error(`Airtable failed (${res.status}): ${body}`);
 }
 
 export default async function handler(req, res) {
@@ -122,13 +136,12 @@ export default async function handler(req, res) {
       total: ((session.amount_total || 0) / 100).toFixed(2),
     };
 
-    try {
-      await Promise.all([notifyByEmail(order), logToAirtable(order)]);
-    } catch (err) {
-      // Don't fail the webhook over a notification hiccup — Stripe already
-      // has the payment recorded either way.
-      console.error("Notification error:", err);
-    }
+    const results = await Promise.allSettled([notifyByEmail(order), logToAirtable(order)]);
+    results.forEach((r, i) => {
+      if (r.status === "rejected") {
+        console.error(`Notification ${i === 0 ? "email" : "airtable"} failed:`, r.reason?.message || r.reason);
+      }
+    });
   }
 
   res.status(200).json({ received: true });
