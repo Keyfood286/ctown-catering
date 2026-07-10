@@ -20,7 +20,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { amount, orderNo, customerEmail } = req.body;
+    const {
+      amount, orderNo, customerEmail, customerName, customerPhone,
+      fulfillment, date, time, address, itemsSummary,
+    } = req.body;
 
     if (!amount || amount <= 0) {
       return res.status(400).json({ error: "Invalid amount" });
@@ -44,7 +47,16 @@ export default async function handler(req, res) {
         },
       ],
       customer_email: customerEmail || undefined,
-      metadata: { orderNo: orderNo || "" },
+      metadata: {
+        orderNo: orderNo || "",
+        customerName: customerName || "",
+        customerPhone: customerPhone || "",
+        fulfillment: fulfillment || "",
+        date: date || "",
+        time: time || "",
+        address: address || "",
+        itemsSummary: (itemsSummary || "").slice(0, 490), // Stripe metadata value limit
+      },
       success_url: `${origin}/?paid=1`,
       cancel_url: `${origin}/?canceled=1`,
     });
