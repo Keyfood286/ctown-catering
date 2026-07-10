@@ -15,10 +15,10 @@
 // verify the signature — on Vercel, disable the default body parser for
 // this route; on Netlify Functions this is handled automatically.
 
-const Stripe = require("stripe");
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+import Stripe from "stripe";
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   const sig = req.headers["stripe-signature"];
   let event;
 
@@ -43,4 +43,4 @@ module.exports = async function handler(req, res) {
   }
 
   res.status(200).json({ received: true });
-};
+}
