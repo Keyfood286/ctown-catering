@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef } from "react";
 import {
   ShoppingBag, Plus, Minus, X, ChevronRight, ChevronLeft, Check,
   MapPin, Calendar, Truck, Store, Phone, Clock,
-  CreditCard, ArrowRight, Utensils, Soup, Beef, Fish, Salad, Cookie, Wheat, Carrot, Landmark,
+  ArrowRight, Utensils, Soup, Beef, Fish, Salad, Cookie, Wheat, Carrot, Landmark,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -330,7 +330,7 @@ function MenuCard({ item, cart, onInc, onDec }) {
 /* CHECKOUT FLOW                                                       */
 /* ------------------------------------------------------------------ */
 
-const STEPS = ["Schedule", "Contact", "Payment", "Review"];
+const STEPS = ["Schedule", "Contact", "Pay"];
 const LEAD_TIME_DAYS = 1;
 
 function minOrderDate() {
@@ -339,15 +339,15 @@ function minOrderDate() {
   return d.toISOString().split("T")[0];
 }
 
-function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack, onPlaceOrder }) {
+function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     fulfillment: "pickup", date: initialDate || "", time: initialTime || "", address: "",
     name: "", email: "", phone: "",
-    paymentMethod: "credit", card: "", exp: "", cvc: "", cardName: "",
-    accountName: "", routing: "", account: "", accountType: "checking",
   });
   const [errors, setErrors] = useState({});
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState("");
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const minDate = minOrderDate();
   const CT_MEALS_TAX_RATE = 0.0735; // CT DRS: prepared meals & catering, incl. pickup and delivery
@@ -367,26 +367,38 @@ function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack, onPlac
       if (!form.email) e.email = "Enter an email";
       if (!form.phone) e.phone = "Enter a phone number";
     }
-    if (step === 2) {
-      if (form.paymentMethod === "bank") {
-        if (!form.accountName) e.accountName = "Enter the account holder's name";
-        if (!form.routing) e.routing = "Enter a routing number";
-        if (!form.account) e.account = "Enter an account number";
-      } else {
-        if (!form.cardName) e.cardName = "Enter the name on the card";
-        if (!form.card) e.card = "Enter a card number";
-        if (!form.exp) e.exp = "MM/YY";
-        if (!form.cvc) e.cvc = "CVC";
-      }
-    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
+  const handlePay = async () => {
+    setPayError("");
+    setPaying(true);
+    const orderNo = String(1000 + Math.floor(Math.random() * 9000));
+    try {
+      // Stash the order so we can show a proper confirmation once Stripe
+      // redirects back — a fresh page load otherwise loses this state.
+      sessionStorage.setItem(
+        "ctownPendingOrder",
+        JSON.stringify({ form, total, orderNo, lines: Object.entries(cart).filter(([, q]) => q > 0) })
+      );
+      const res = await fetch("/api/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: total, orderNo, customerEmail: form.email }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || "Could not start payment");
+      window.location.href = data.url;
+    } catch (err) {
+      setPayError("Something went wrong starting payment. Please try again.");
+      setPaying(false);
+    }
+  };
+
   const next = () => {
     if (!validate()) return;
-    if (step === STEPS.length - 1) onPlaceOrder(form, total);
-    else setStep((s) => s + 1);
+    setStep((s) => s + 1);
   };
 
   const lines = Object.entries(cart).filter(([, q]) => q > 0);
@@ -474,89 +486,11 @@ function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack, onPlac
 
         {step === 2 && (
           <div className="flex flex-col gap-5">
-            <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 24, color: "var(--ink)" }}>Payment</h2>
-            <p className="text-xs -mt-3" style={{ color: "var(--ink)", opacity: 0.5, fontFamily: "'Public Sans', sans-serif" }}>This is a prototype — no real payment is processed.</p>
-
-            <div className="flex gap-2">
-              {[
-                { id: "credit", label: "Credit Card", icon: CreditCard },
-                { id: "debit", label: "Debit Card", icon: CreditCard },
-                { id: "bank", label: "Bank Account", icon: Landmark },
-              ].map((opt) => (
-                <button
-                  key={opt.id}
-                  onClick={() => set("paymentMethod", opt.id)}
-                  className="flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-md text-xs font-medium"
-                  style={{
-                    border: `1px solid ${form.paymentMethod === opt.id ? "var(--red)" : "var(--line)"}`,
-                    background: form.paymentMethod === opt.id ? "var(--red)" : "transparent",
-                    color: form.paymentMethod === opt.id ? "#fff" : "var(--ink)",
-                    fontFamily: "'Public Sans', sans-serif",
-                  }}
-                >
-                  <opt.icon size={16} /> {opt.label}
-                </button>
-              ))}
-            </div>
-
-            {(form.paymentMethod === "credit" || form.paymentMethod === "debit") && (
-              <>
-                <Field label="Name on card" error={errors.cardName}>
-                  <input type="text" value={form.cardName} onChange={(e) => set("cardName", e.target.value)} className="w-full px-3 py-2 rounded-md text-sm" style={inputStyle} />
-                </Field>
-                <Field label="Card number" error={errors.card}>
-                  <div className="relative">
-                    <CreditCard size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--ink)", opacity: 0.5 }} />
-                    <input type="text" placeholder="4242 4242 4242 4242" value={form.card} onChange={(e) => set("card", e.target.value)} className="w-full pl-9 pr-3 py-2 rounded-md text-sm font-mono" style={inputStyle} />
-                  </div>
-                </Field>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Expiry" error={errors.exp}><input type="text" placeholder="MM/YY" value={form.exp} onChange={(e) => set("exp", e.target.value)} className="w-full px-3 py-2 rounded-md text-sm font-mono" style={inputStyle} /></Field>
-                  <Field label="CVC" error={errors.cvc}><input type="text" placeholder="123" value={form.cvc} onChange={(e) => set("cvc", e.target.value)} className="w-full px-3 py-2 rounded-md text-sm font-mono" style={inputStyle} /></Field>
-                </div>
-              </>
-            )}
-
-            {form.paymentMethod === "bank" && (
-              <>
-                <Field label="Account holder name" error={errors.accountName}>
-                  <input type="text" value={form.accountName} onChange={(e) => set("accountName", e.target.value)} className="w-full px-3 py-2 rounded-md text-sm" style={inputStyle} />
-                </Field>
-                <div className="flex gap-3">
-                  {[{ id: "checking", label: "Checking" }, { id: "savings", label: "Savings" }].map((opt) => (
-                    <button key={opt.id} onClick={() => set("accountType", opt.id)} className="flex-1 py-2 rounded-md text-sm font-medium" style={{ border: `1px solid ${form.accountType === opt.id ? "var(--red)" : "var(--line)"}`, background: form.accountType === opt.id ? "var(--red)" : "transparent", color: form.accountType === opt.id ? "#fff" : "var(--ink)", fontFamily: "'Public Sans', sans-serif" }}>
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Routing number" error={errors.routing}>
-                    <div className="relative">
-                      <Landmark size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--ink)", opacity: 0.5 }} />
-                      <input type="text" placeholder="9 digits" value={form.routing} onChange={(e) => set("routing", e.target.value)} className="w-full pl-9 pr-3 py-2 rounded-md text-sm font-mono" style={inputStyle} />
-                    </div>
-                  </Field>
-                  <Field label="Account number" error={errors.account}>
-                    <input type="text" value={form.account} onChange={(e) => set("account", e.target.value)} className="w-full px-3 py-2 rounded-md text-sm font-mono" style={inputStyle} />
-                  </Field>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="flex flex-col gap-5">
-            <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 24, color: "var(--ink)" }}>Review your order</h2>
+            <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 24, color: "var(--ink)" }}>Review & pay</h2>
             <div className="flex flex-col gap-2 text-sm" style={{ fontFamily: "'Public Sans', sans-serif", color: "var(--ink)" }}>
               <div><b>{form.fulfillment === "delivery" ? "Delivery" : "Pickup"}</b> — {form.date} at {form.time}</div>
               {form.fulfillment === "delivery" ? <div>{form.address}</div> : <div>{STORE.address}</div>}
               <div className="pt-2" style={{ opacity: 0.7 }}>{form.name} · {form.email} · {form.phone}</div>
-              <div className="pt-1" style={{ opacity: 0.7 }}>
-                {form.paymentMethod === "bank"
-                  ? `Bank account (${form.accountType}) ending in ${form.account.slice(-4).padStart(4, "•")}`
-                  : `${form.paymentMethod === "debit" ? "Debit" : "Credit"} card ending in ${form.card.slice(-4).padStart(4, "•")}`}
-              </div>
             </div>
             <div className="pt-3" style={{ borderTop: "1px dashed var(--line)" }}>
               {lines.map(([key, qty]) => {
@@ -579,6 +513,11 @@ function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack, onPlac
                 <span>Total</span><span>{fmt(total)}</span>
               </div>
             </div>
+
+            <div className="flex items-center gap-2 text-xs pt-1" style={{ color: "var(--ink)", opacity: 0.55, fontFamily: "'Public Sans', sans-serif" }}>
+              <Landmark size={14} /> You'll enter your card or bank details on Stripe's secure payment page — CTown never sees or stores that information.
+            </div>
+            {payError && <p className="text-xs" style={{ color: "var(--red)" }}>{payError}</p>}
           </div>
         )}
 
@@ -586,9 +525,20 @@ function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack, onPlac
           <button onClick={() => (step === 0 ? onBack() : setStep((s) => s - 1))} className="text-sm px-4 py-2 rounded-md" style={{ color: "var(--ink)", fontFamily: "'Public Sans', sans-serif" }}>
             {step === 0 ? "Cancel" : "Back"}
           </button>
-          <button onClick={next} className="text-sm font-medium uppercase tracking-wide px-6 py-3 rounded-md flex items-center gap-2" style={{ background: "var(--red)", color: "#fff", fontFamily: "'Public Sans', sans-serif" }}>
-            {step === STEPS.length - 1 ? "Place order" : "Continue"} <ArrowRight size={15} />
-          </button>
+          {step === STEPS.length - 1 ? (
+            <button
+              onClick={handlePay}
+              disabled={paying}
+              className="text-sm font-medium uppercase tracking-wide px-6 py-3 rounded-md flex items-center gap-2"
+              style={{ background: "var(--red)", color: "#fff", fontFamily: "'Public Sans', sans-serif", opacity: paying ? 0.7 : 1 }}
+            >
+              {paying ? "Starting payment…" : `Pay ${fmt(total)} securely`} <ArrowRight size={15} />
+            </button>
+          ) : (
+            <button onClick={next} className="text-sm font-medium uppercase tracking-wide px-6 py-3 rounded-md flex items-center gap-2" style={{ background: "var(--red)", color: "#fff", fontFamily: "'Public Sans', sans-serif" }}>
+              Continue <ArrowRight size={15} />
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -662,14 +612,27 @@ export default function CTownCateringSite() {
     sectionRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const placeOrder = (form, total) => {
-    setLastForm(form);
-    setOrderTotal(total);
-    setOrderNo(String(1000 + Math.floor(Math.random() * 9000)));
-    setView("confirmation");
-  };
-
   const newOrder = () => { setCart({}); setView("menu"); setOrderNo(null); setOrderDate(""); setOrderTime(""); };
+
+  // After Stripe redirects back from its hosted payment page, restore the
+  // order we stashed in sessionStorage right before sending the customer
+  // over, and show the real confirmation.
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("paid") === "1") {
+      const saved = sessionStorage.getItem("ctownPendingOrder");
+      if (saved) {
+        const { form, total, orderNo } = JSON.parse(saved);
+        setLastForm(form);
+        setOrderTotal(total);
+        setOrderNo(orderNo);
+        setView("confirmation");
+        setCart({});
+        sessionStorage.removeItem("ctownPendingOrder");
+      }
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   return (
     <div style={{
@@ -727,7 +690,7 @@ export default function CTownCateringSite() {
       {view === "confirmation" ? (
         <Confirmation orderNo={orderNo} form={lastForm} total={orderTotal} onNewOrder={newOrder} />
       ) : view === "checkout" ? (
-        <CheckoutFlow cart={cart} subtotal={subtotal} initialDate={orderDate} initialTime={orderTime} onBack={() => setView("menu")} onPlaceOrder={placeOrder} />
+        <CheckoutFlow cart={cart} subtotal={subtotal} initialDate={orderDate} initialTime={orderTime} onBack={() => setView("menu")} />
       ) : (
         <div className="grid lg:grid-cols-[1fr_320px] gap-0">
           <main className="px-5 sm:px-8 pb-24">
