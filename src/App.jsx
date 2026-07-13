@@ -331,12 +331,20 @@ function MenuCard({ item, cart, onInc, onDec }) {
 /* ------------------------------------------------------------------ */
 
 const STEPS = ["Schedule", "Contact", "Pay"];
-const LEAD_TIME_DAYS = 1;
+const LEAD_TIME_HOURS = 24;
 
 function minOrderDate() {
-  const d = new Date();
-  d.setDate(d.getDate() + LEAD_TIME_DAYS);
+  const d = new Date(Date.now() + LEAD_TIME_HOURS * 60 * 60 * 1000);
   return d.toISOString().split("T")[0];
+}
+
+// True 24-hour check: combines the picked date + time and compares against
+// right now + 24 hours, not just the calendar date.
+function isAtLeast24Hours(dateStr, timeStr) {
+  if (!dateStr || !timeStr) return true; // let the required-field checks catch empties
+  const picked = new Date(`${dateStr}T${timeStr}`);
+  const threshold = new Date(Date.now() + LEAD_TIME_HOURS * 60 * 60 * 1000);
+  return picked.getTime() >= threshold.getTime();
 }
 
 function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack }) {
@@ -358,8 +366,10 @@ function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack }) {
     const e = {};
     if (step === 0) {
       if (!form.date) e.date = "Pick a date";
-      else if (form.date < minDate) e.date = `Needs ${LEAD_TIME_DAYS} days notice`;
       if (!form.time) e.time = "Pick a time";
+      else if (form.date && !isAtLeast24Hours(form.date, form.time)) {
+        e.time = "Needs 24 hours notice";
+      }
       if (form.fulfillment === "delivery" && !form.address) e.address = "Enter a delivery address";
     }
     if (step === 1) {
@@ -454,7 +464,7 @@ function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack }) {
           <div className="flex flex-col gap-5">
             <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 24, color: "var(--ink)" }}>Schedule your order</h2>
             <p className="text-xs -mt-3" style={{ color: "var(--ink)", opacity: 0.55, fontFamily: "'Public Sans', sans-serif" }}>
-              Catering orders need at least {LEAD_TIME_DAYS} days notice — earliest date is {minDate}.
+              Catering orders need at least 24 hours notice before the pickup/delivery time.
             </p>
             <div className="flex gap-3">
               {[{ id: "pickup", label: "Pickup", icon: Store }, { id: "delivery", label: "Delivery", icon: Truck }].map((opt) => (
