@@ -112,14 +112,25 @@ const MENU = {
   especiales: [
     { id: "d1", en: "Sweet Plantain Lasagna", es: "Pastelón", sizes: tiered(65, 110, 170) },
     { id: "d2", en: "Traditional Caramel Custard", es: "Flan", sizes: tiered(40, 80, 120) },
+    {
+      id: "d3", en: "Empanadas", es: "Empanadas", sizes: { each: 2.99 },
+      flavors: ["Cheese", "Chicken", "Beef", "Chicken and Cheese", "Beef and Cheese"],
+    },
   ],
 };
 
-// flatten every item+size into an addressable variant for cart lookups
+// flatten every item+size (and flavor, where applicable) into an
+// addressable variant for cart lookups
 const VARIANTS = {};
 Object.values(MENU).flat().forEach((item) => {
   Object.entries(item.sizes).forEach(([sizeKey, price]) => {
-    VARIANTS[`${item.id}__${sizeKey}`] = { item, sizeKey, price };
+    if (item.flavors) {
+      item.flavors.forEach((flavor) => {
+        VARIANTS[`${item.id}__${sizeKey}__${flavor}`] = { item, sizeKey, price, flavor };
+      });
+    } else {
+      VARIANTS[`${item.id}__${sizeKey}`] = { item, sizeKey, price };
+    }
   });
 });
 
@@ -230,7 +241,7 @@ function OrderTicket({ cart, subtotal, date, onDateChange, time, onTimeChange, o
                       {v.item.en}
                     </span>
                     <span className="text-xs font-mono" style={{ color: "var(--ink)", opacity: 0.5 }}>
-                      {sizeInfo.label} · {fmt(v.price)}
+                      {v.flavor || sizeInfo.label} · {fmt(v.price)}
                     </span>
                   </div>
                   <Stepper qty={qty} onDec={() => onDec(key)} onInc={() => onInc(key)} />
@@ -284,7 +295,55 @@ function Row({ label, value }) {
 /* ------------------------------------------------------------------ */
 
 function MenuCard({ item, cart, onInc, onDec }) {
+  const [flavor, setFlavor] = useState(item.flavors ? item.flavors[0] : null);
   const sizeKeys = Object.keys(item.sizes);
+
+  if (item.flavors) {
+    const sizeKey = sizeKeys[0]; // e.g. "each"
+    const price = item.sizes[sizeKey];
+    const key = `${item.id}__${sizeKey}__${flavor}`;
+    const qty = cart[key] || 0;
+    const info = SIZE_INFO[sizeKey];
+    return (
+      <div className="p-5 rounded-lg" style={{ background: "var(--card)", border: "1px solid var(--line)" }}>
+        <div className="mb-3">
+          <h3 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 17, color: "var(--ink)" }}>{item.en}</h3>
+          <p className="text-xs italic" style={{ color: "var(--ink)", opacity: 0.55, fontFamily: "'Public Sans', sans-serif" }}>{item.es}</p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <select
+            value={flavor}
+            onChange={(e) => setFlavor(e.target.value)}
+            className="w-full px-3 py-2 rounded-md text-sm"
+            style={{ background: "var(--paper)", border: "1px solid var(--line)", color: "var(--ink)", fontFamily: "'Public Sans', sans-serif" }}
+          >
+            {item.flavors.map((f) => (
+              <option key={f} value={f}>{f}</option>
+            ))}
+          </select>
+          <div className="flex items-center justify-between text-sm" style={{ fontFamily: "'Public Sans', sans-serif" }}>
+            <span className="text-xs" style={{ color: "var(--ink)", opacity: 0.5 }}>{info.label}</span>
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-sm" style={{ color: "var(--red)" }}>{fmt(price)}</span>
+              {qty > 0 ? (
+                <Stepper qty={qty} onDec={() => onDec(key)} onInc={() => onInc(key)} />
+              ) : (
+                <button
+                  onClick={() => onInc(key)}
+                  className="flex items-center justify-center rounded-full"
+                  style={{ width: 24, height: 24, border: "1px solid var(--ink)", color: "var(--ink)" }}
+                  aria-label={`Add ${item.en} (${flavor})`}
+                >
+                  <Plus size={12} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-5 rounded-lg" style={{ background: "var(--card)", border: "1px solid var(--line)" }}>
       <div className="mb-3">
@@ -345,6 +404,16 @@ function isAtLeast24Hours(dateStr, timeStr) {
   const picked = new Date(`${dateStr}T${timeStr}`);
   const threshold = new Date(Date.now() + LEAD_TIME_HOURS * 60 * 60 * 1000);
   return picked.getTime() >= threshold.getTime();
+}
+
+function Field({ label, error, children }) {
+  return (
+    <label className="flex flex-col gap-1 text-sm">
+      <span className="font-medium" style={{ color: "var(--ink)" }}>{label}</span>
+      {children}
+      {error && <span className="text-xs" style={{ color: "var(--red)" }}>{error}</span>}
+    </label>
+  );
 }
 
 function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack }) {
@@ -409,7 +478,7 @@ function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack }) {
             .filter(([, q]) => q > 0)
             .map(([key, qty]) => {
               const v = VARIANTS[key];
-              return v ? `${qty}x ${v.item.en} (${SIZE_INFO[v.sizeKey].label})` : "";
+              return v ? `${qty}x ${v.item.en} (${v.flavor || SIZE_INFO[v.sizeKey].label})` : "";
             })
             .filter(Boolean)
             .join("; "),
@@ -431,13 +500,6 @@ function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack }) {
 
   const lines = Object.entries(cart).filter(([, q]) => q > 0);
   const inputStyle = { background: "var(--paper)", border: "1px solid var(--line)", color: "var(--ink)", fontFamily: "'Public Sans', sans-serif" };
-  const Field = ({ label, error, children }) => (
-    <label className="flex flex-col gap-1 text-sm">
-      <span className="font-medium" style={{ color: "var(--ink)" }}>{label}</span>
-      {children}
-      {error && <span className="text-xs" style={{ color: "var(--red)" }}>{error}</span>}
-    </label>
-  );
 
   return (
     <div className="max-w-3xl mx-auto px-5 py-10 w-full">
@@ -525,7 +587,7 @@ function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack }) {
                 const v = VARIANTS[key];
                 return (
                   <div key={key} className="flex justify-between text-sm py-1 font-mono" style={{ color: "var(--ink)", opacity: 0.75 }}>
-                    <span>{qty} × {v.item.en} ({SIZE_INFO[v.sizeKey].label})</span>
+                    <span>{qty} × {v.item.en} ({v.flavor || SIZE_INFO[v.sizeKey].label})</span>
                     <span>{fmt(v.price * qty)}</span>
                   </div>
                 );
@@ -722,26 +784,34 @@ export default function CTownCateringSite() {
       ) : (
         <div className="grid lg:grid-cols-[1fr_320px] gap-0">
           <main className="px-5 sm:px-8 pb-24">
-            <section className="py-12 sm:py-16 max-w-2xl">
-              <span className="uppercase text-xs tracking-widest font-semibold" style={{ color: "var(--red)", fontFamily: "'IBM Plex Mono', monospace" }}>
-                Order Catering Online · Pida en Línea
-              </span>
-              <h1 className="mt-3 leading-[1.05]" style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: "clamp(30px, 4.5vw, 46px)", color: "var(--ink)" }}>
-                Fresh trays, cooked to order.
-              </h1>
-              <p className="mt-2 italic" style={{ fontFamily: "'Fraunces', serif", fontWeight: 500, fontSize: "clamp(17px, 2.2vw, 22px)", color: "var(--ink)", opacity: 0.7 }}>
-                Bandejas frescas, cocinadas al momento — recogida o entrega en tu CTown.
-              </p>
-              <p className="mt-4 text-base" style={{ color: "var(--ink)", opacity: 0.7, fontFamily: "'Public Sans', sans-serif" }}>
-                Rice, meats, seafood, pasta, sides, and desserts by the tray. Choose small, medium, or large to match your crowd, and we'll have it ready at the counter.
-              </p>
-              <div className="flex flex-wrap gap-3 mt-7">
-                {CATEGORIES.map((c) => (
-                  <button key={c.id} onClick={() => scrollTo(c.id)} className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium" style={{ border: "1px solid var(--ink)", color: "var(--ink)", fontFamily: "'Public Sans', sans-serif" }}>
-                    <c.icon size={14} /> {c.label}
-                  </button>
-                ))}
+            <section className="py-12 sm:py-16 grid sm:grid-cols-[1.2fr_1fr] gap-8 sm:gap-10 items-center">
+              <div>
+                <span className="uppercase text-xs tracking-widest font-semibold" style={{ color: "var(--red)", fontFamily: "'IBM Plex Mono', monospace" }}>
+                  Order Catering Online · Pida en Línea
+                </span>
+                <h1 className="mt-3 leading-[1.05]" style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: "clamp(30px, 4.5vw, 46px)", color: "var(--ink)" }}>
+                  Fresh trays, cooked to order.
+                </h1>
+                <p className="mt-2 italic" style={{ fontFamily: "'Fraunces', serif", fontWeight: 500, fontSize: "clamp(17px, 2.2vw, 22px)", color: "var(--ink)", opacity: 0.7 }}>
+                  Bandejas frescas, cocinadas al momento — recogida o entrega en tu CTown.
+                </p>
+                <p className="mt-4 text-base" style={{ color: "var(--ink)", opacity: 0.7, fontFamily: "'Public Sans', sans-serif" }}>
+                  Rice, meats, seafood, pasta, sides, and desserts by the tray. Choose small, medium, or large to match your crowd, and we'll have it ready at the counter.
+                </p>
+                <div className="flex flex-wrap gap-3 mt-7">
+                  {CATEGORIES.map((c) => (
+                    <button key={c.id} onClick={() => scrollTo(c.id)} className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium" style={{ border: "1px solid var(--ink)", color: "var(--ink)", fontFamily: "'Public Sans', sans-serif" }}>
+                      <c.icon size={14} /> {c.label}
+                    </button>
+                  ))}
+                </div>
               </div>
+              <img
+                src="/storefront.png"
+                alt="CTown Supermarkets storefront, 442 Main St, East Hartford, CT"
+                className="w-full h-auto rounded-lg"
+                style={{ border: "1px solid var(--line)", maxHeight: 420, objectFit: "cover" }}
+              />
             </section>
 
             {CATEGORIES.map((cat) => (
