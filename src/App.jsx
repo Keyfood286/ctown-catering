@@ -257,7 +257,7 @@ function OrderTicket({ cart, subtotal, date, onDateChange, time, onTimeChange, o
             <span className="text-lg font-semibold" style={{ color: "var(--red)", fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(subtotal)}</span>
           </div>
           <p className="text-xs mt-1" style={{ color: "var(--ink)", opacity: 0.5, fontFamily: "'Public Sans', sans-serif" }}>
-            CT charges a 7.35% meals tax on prepared catering orders, added to every order at checkout — pickup or delivery.
+            CT charges a 7.35% meals tax on prepared catering orders, added to every order at checkout.
           </p>
         </div>
 
@@ -391,6 +391,8 @@ function MenuCard({ item, cart, onInc, onDec }) {
 
 const STEPS = ["Schedule", "Contact", "Pay"];
 const LEAD_TIME_HOURS = 24;
+// Set to true to bring back the Delivery option (pickup-only for now).
+const DELIVERY_ENABLED = false;
 
 function minOrderDate() {
   const d = new Date(Date.now() + LEAD_TIME_HOURS * 60 * 60 * 1000);
@@ -526,15 +528,17 @@ function CheckoutFlow({ cart, subtotal, initialDate, initialTime, onBack }) {
           <div className="flex flex-col gap-5">
             <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 24, color: "var(--ink)" }}>Schedule your order</h2>
             <p className="text-xs -mt-3" style={{ color: "var(--ink)", opacity: 0.55, fontFamily: "'Public Sans', sans-serif" }}>
-              Catering orders need at least 24 hours notice before the pickup/delivery time.
+              Catering orders need at least 24 hours notice before your {DELIVERY_ENABLED ? "pickup/delivery" : "pickup"} time.
             </p>
-            <div className="flex gap-3">
-              {[{ id: "pickup", label: "Pickup", icon: Store }, { id: "delivery", label: "Delivery", icon: Truck }].map((opt) => (
-                <button key={opt.id} onClick={() => set("fulfillment", opt.id)} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-md text-sm font-medium" style={{ border: `1px solid ${form.fulfillment === opt.id ? "var(--red)" : "var(--line)"}`, background: form.fulfillment === opt.id ? "var(--red)" : "transparent", color: form.fulfillment === opt.id ? "#fff" : "var(--ink)", fontFamily: "'Public Sans', sans-serif" }}>
-                  <opt.icon size={16} /> {opt.label}
-                </button>
-              ))}
-            </div>
+            {DELIVERY_ENABLED && (
+              <div className="flex gap-3">
+                {[{ id: "pickup", label: "Pickup", icon: Store }, { id: "delivery", label: "Delivery", icon: Truck }].map((opt) => (
+                  <button key={opt.id} onClick={() => set("fulfillment", opt.id)} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-md text-sm font-medium" style={{ border: `1px solid ${form.fulfillment === opt.id ? "var(--red)" : "var(--line)"}`, background: form.fulfillment === opt.id ? "var(--red)" : "transparent", color: form.fulfillment === opt.id ? "#fff" : "var(--ink)", fontFamily: "'Public Sans', sans-serif" }}>
+                    <opt.icon size={16} /> {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <Field label="Date" error={errors.date}>
                 <div className="relative">
@@ -742,7 +746,7 @@ export default function CTownCateringSite() {
         <div className="hidden sm:flex items-center justify-center gap-6 py-2 text-xs" style={{ background: "var(--ink)", color: "#fff", fontFamily: "'Public Sans', sans-serif" }}>
           <span className="flex items-center gap-1"><MapPin size={12} /> {STORE.address}</span>
           <a href={STORE.phoneHref} className="flex items-center gap-1"><Phone size={12} /> {STORE.phone}</a>
-          <span className="opacity-60 italic">Pickup or delivery · Recogida o entrega</span>
+          <span className="opacity-60 italic">Pickup only · Solo recogida</span>
         </div>
       )}
 
@@ -793,7 +797,7 @@ export default function CTownCateringSite() {
                   Fresh trays, cooked to order.
                 </h1>
                 <p className="mt-2 italic" style={{ fontFamily: "'Fraunces', serif", fontWeight: 500, fontSize: "clamp(17px, 2.2vw, 22px)", color: "var(--ink)", opacity: 0.7 }}>
-                  Bandejas frescas, cocinadas al momento — recogida o entrega en tu CTown.
+                  Bandejas frescas, cocinadas al momento — recógelas en tu CTown.
                 </p>
                 <p className="mt-4 text-base" style={{ color: "var(--ink)", opacity: 0.7, fontFamily: "'Public Sans', sans-serif" }}>
                   Rice, meats, seafood, pasta, sides, and desserts by the tray. Choose small, medium, or large to match your crowd, and we'll have it ready at the counter.
@@ -865,3 +869,4 @@ export default function CTownCateringSite() {
     </div>
   );
 }
+
